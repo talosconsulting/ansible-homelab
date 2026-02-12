@@ -53,11 +53,14 @@
     block: |
       eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv bash)"
 
-      alias yt-dlp='yt-dlp --write-sub --write-auto-sub --sub-lang "en.*" --sub-format srt'
-
       # kubernetes-related
+      source <( kubectl completion bash )
+      source <( helm completion bash )
+      export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
       alias k=kubectl
       complete -o default -F __start_kubectl k
+
+      alias yt-dlp='yt-dlp --write-sub --write-auto-sub --sub-lang "en.*" --sub-format srt'
 
       [[ -f /home/linuxbrew/.linuxbrew/share/liquidprompt ]] && source /home/linuxbrew/.linuxbrew/share/liquidprompt
 
