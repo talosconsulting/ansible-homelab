@@ -1,0 +1,142 @@
+---
+- name: Wake hosts
+  hosts: localhost
+  roles:
+    - wakeywakey
+  gather_facts: false
+  tasks:
+    - name: Sleep for 10 seconds
+      ansible.builtin.pause:
+        seconds: 10
+
+- name: Upgrade EL hosts
+  hosts: el
+  vars:
+    clean: false
+  become: true
+  tasks:
+    - name: Clear DNF cache
+      ansible.builtin.command: dnf clean all
+      when: clean == 'true'
+      changed_when: false
+    - name: Upgrade DNF packages
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_only: true
+        update_cache: true
+      register: el_dnf_results
+    - name: Display DNF upgrade results
+      ansible.builtin.debug:
+        var: el_dnf_results['results']
+
+- name: Upgrade PyPI packages on Zeus
+  hosts: localhost
+  tasks:
+    - name: Upgrade PyPI packages
+      ansible.builtin.pip:
+        name: "{{ item }}"
+        state: present
+        executable: "{{ ansible_facts['user_dir'] }}/.local/bin/pip"
+        extra_args: --user --upgrade
+      register: pip_results
+      loop:
+        - pip
+        - yt-dlp
+    - name: Display pip upgrade results
+      ansible.builtin.debug:
+        var: pip_results['results']|map(attribute='stdout_lines')|list
+
+- name: Upgrade rclone on Zeus
+  hosts: localhost
+  become: true
+  tasks:
+    - name: Upgrade rclone
+      ansible.builtin.command: /usr/local/bin/rclone selfupdate
+      register: rclone_results
+      changed_when: "'rclone is up to date' not in rclone_results['stderr']"
+    - name: Display rclone selfupdate results
+      ansible.builtin.debug:
+        var: rclone_results
+
+- name: Upgrade Windows hosts
+  hosts: windows
+  ignore_unreachable: true
+  tasks:
+    - name: Upgrade Windows host
+      ansible.windows.win_updates:
+        category_names: "*"
+        reboot: true
+        reboot_timeout: 3600
+      register: windows_update_results
+    - name: Display Windows Update results
+      ansible.builtin.debug:
+        var: windows_update_results['updates']
+
+- name: Upgrade Fedora hosts
+  hosts: fedora
+  become: true
+  vars:
+    clean: false
+  roles:
+    - disable-sleep
+  tasks:
+    - name: Refresh fwupdmgr
+      ansible.builtin.command: fwupdmgr refresh --force
+      changed_when: false
+    - name: Get updates for fwupdmgr
+      ansible.builtin.command: fwupdmgr get-updates
+      register: get_updates_for_fwupdmgr
+      changed_when: get_updates_for_fwupdmgr['rc'] != 2
+      failed_when: false
+    - name: Display fwupdmgr get-updates results
+      ansible.builtin.debug:
+        var: get_updates_for_fwupdmgr['stdout_lines']
+    - name: Apply updates for fwupdmgr
+      ansible.builtin.command: fwupdmgr update
+      register: apply_updates_for_fwupdmgr
+      changed_when: "'Successfully installed firmware' in apply_updates_for_fwupdmgr['stdout']"
+      failed_when: false
+    - name: Display fwupdmgr update results
+      ansible.builtin.debug:
+        var: apply_updates_for_fwupdmgr['stdout_lines']
+
+    - name: Clear DNF cache on Fedora hosts
+      ansible.builtin.command: nice dnf clean all
+      when: clean == 'true'
+      changed_when: false
+    - name: Upgrade all packages
+      ansible.builtin.dnf5:
+        name: "*"
+        state: latest
+        update_only: true
+        update_cache: true
+      register: fedora_dnf_results
+    - name: Display DNF upgrade results
+      ansible.builtin.debug:
+        var: fedora_dnf_results['results']
+    - name: Check if host needs restarting
+      ansible.builtin.command: /usr/bin/needs-restarting -r
+      register: fedora_needs_restarting_results
+      changed_when: "'Reboot should not be necessary.' not in fedora_needs_restarting_results['stdout']"
+      failed_when: false
+    - name: Display needs-restarting results
+      ansible.builtin.debug:
+        var: fedora_needs_restarting_results['stdout_lines']
+
+- name: Upgrade Homebrew packages on Fedora developer hosts
+  hosts: fedora_dev
+  tasks:
+    - name: Upgrade Homebrew packages
+      community.general.homebrew:
+        update_homebrew: true
+        upgrade_all: true
+      register: upgrade_homebrew
+    - name: Display Homebrew upgrade results
+      ansible.builtin.debug:
+        var: upgrade_homebrew['changed_pkgs']
+
+- name: Re-enable sleep on Fedora hosts
+  hosts: fedora
+  roles:
+    - enable-sleep

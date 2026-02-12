@@ -1,0 +1,48 @@
+---
+- name: Wake up hosts
+  hosts: localhost
+  roles:
+    - wakeywakey
+  gather_facts: false
+  tasks:
+    - name: Sleep for 10 seconds
+      ansible.builtin.pause:
+        seconds: 10
+
+- name: Configure Fedora hosts
+  hosts: fedora
+  roles:
+    - disable-sleep
+    - fedora-workstation
+    - lordtaytertot.gnome-extensions
+
+- name: Configure stationary Fedora hosts
+  hosts: fedora_stationary
+  roles:
+    - fedora-workstation-stationary
+    - solaar
+
+- name: Configure mobile Fedora hosts
+  hosts: fedora_mobile
+  roles:
+    - fedora-workstation-mobile
+
+- name: Configure developer Fedora hosts
+  hosts: fedora_dev
+  roles:
+    - fedora-developer
+
+- name: Configure Apollo
+  hosts: apollo
+  roles:
+    - apollo
+
+- name: Configure Hermes
+  hosts: hermes
+  roles:
+    - hermes
+
+- name: Re-enable power saving on Fedora hosts
+  hosts: fedora
+  roles:
+    - enable-sleep

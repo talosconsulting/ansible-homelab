@@ -1,0 +1,9 @@
+---
+# tasks file for hypnos
+- name: Copy wol.service
+  become: true
+  ansible.builtin.copy:
+    src: wol.service
+    dest: /etc/systemd/system/wol.service
+    mode: '0644'
+  notify: Enable wol.service

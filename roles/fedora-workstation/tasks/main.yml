@@ -1,0 +1,276 @@
+---
+# tasks file for fedora-workstation
+- name: Install DNF Automatic
+  become: true
+  ansible.builtin.dnf5:
+    name: dnf-automatic
+    state: present
+
+- name: Enable automatic installation of updates
+  become: true
+  ansible.builtin.copy:
+    src: automatic.conf
+    dest: /etc/dnf/automatic.conf
+    mode: "0644"
+
+- name: Set command-line arguments in GRUB2
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/default/grub
+    regexp: "^GRUB_CMDLINE_LINUX="
+    line: GRUB_CMDLINE_LINUX="quiet"
+  notify: Run grub2-mkconfig
+
+- name: Set static hostname
+  become: true
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Copy LAN CA certificate
+  become: true
+  ansible.builtin.copy:
+    src: ca.crt
+    dest: /etc/pki/ca-trust/source/anchors/ca.crt
+    owner: root
+    group: root
+    mode: "0444"
+  notify: Update CA trust
+
+- name: Add Flathub repository
+  community.general.flatpak_remote:
+    name: flathub
+    state: present
+    flatpakrepo_url: https://flathub.org/repo/flathub.flatpakrepo
+    method: user
+
+- name: Install Jellyfin Media Player
+  community.general.flatpak:
+    name: com.github.iwalton3.jellyfin-media-player
+    state: latest
+    method: user
+
+- name: Remove desktop, public, and templates subdirectories
+  ansible.builtin.file:
+    path: "{{ ansible_facts['user_dir'] }}/{{ item }}"
+    state: absent
+  with_items:
+    - Desktop
+    - Public
+    - Templates
+
+- name: Create PipeWire configuration subdirectories
+  become: true
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /etc/pipewire/client.conf.d
+    - /etc/pipewire/pipewire-pulse.conf.d
+
+- name: Copy PipeWire configuration files
+  become: true
+  ansible.builtin.copy:
+    src: 10-normalize.conf
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - /etc/pipewire/client.conf.d/10-normalize.conf
+    - /etc/pipewire/pipewire-pulse.conf.d/10-normalize.conf
+  notify: Restart PipeWire
+
+- name: Copy tmux.conf
+  ansible.builtin.copy:
+    src: tmux.conf
+    dest: "{{ ansible_facts['user_dir'] }}/.tmux.conf"
+    owner: "{{ ansible_facts['user_id'] }}"
+    group: "{{ ansible_facts['user_gid'] }}"
+    mode: "0644"
+
+- name: Copy .vimrc
+  ansible.builtin.copy:
+    src: vimrc
+    dest: "{{ ansible_facts['user_dir'] }}/.vimrc"
+    owner: "{{ ansible_facts['user_id'] }}"
+    group: "{{ ansible_facts['user_gid'] }}"
+    mode: "0644"
+
+- name: Set color scheme to dark
+  community.general.dconf:
+    key: "/org/gnome/desktop/interface/color-scheme"
+    value: "'prefer-dark'"
+
+- name: Set GTK theme to Adwaita Dark
+  community.general.dconf:
+    key: "/org/gnome/desktop/interface/gtk-theme"
+    value: "'Adwaita-dark'"
+
+- name: Set background
+  community.general.dconf:
+    key: "/org/gnome/desktop/background/picture-uri-dark"
+    value: "'file:///usr/share/backgrounds/gnome/blobs-d.svg'"
+
+- name: Set clock to 12h
+  community.general.dconf:
+    key: "/org/gnome/desktop/interface/clock-format"
+    value: "'12h'"
+
+- name: Set date in taskbar
+  community.general.dconf:
+    key: "/org/gnome/desktop/interface/clock-show-date"
+    value: "true"
+
+- name: Set weekday in taskbar
+  community.general.dconf:
+    key: "/org/gnome/desktop/interface/clock-show-weekday"
+    value: "true"
+
+- name: Enable right-mouse button clicking
+  community.general.dconf:
+    key: "/org/gnome/desktop/peripherals/touchpad"
+    value: "'areas'"
+
+- name: Disable natural scrolling
+  community.general.dconf:
+    key: "/org/gnome/desktop/peripherals/touchpad/natural-scroll"
+    value: "false"
+
+- name: Enable tap to click
+  community.general.dconf:
+    key: "/org/gnome/desktop/peripherals/touchpad/tap-to-click"
+    value: "true"
+
+- name: Set display timeout to 15m
+  community.general.dconf:
+    key: "/org/gnome/desktop/session/idle-delay"
+    value: "uint32 900"
+
+- name: Disable event sounds
+  community.general.dconf:
+    key: "/org/gnome/desktop/sound/event-sound"
+    value: "false"
+
+- name: Set bell-style to none
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/inputrc
+    regexp: "^#set bell-style none"
+    line: "set bell-style none"
+
+- name: Disable audible bell
+  community.general.dconf:
+    key: "/org/gnome/desktop/wm/preferences/audible-bell"
+    value: "false"
+
+- name: Disable visual bell
+  community.general.dconf:
+    key: "/org/gnome/desktop/wm/preferences/visual-bell"
+    value: "false"
+
+- name: Set Ptyxis profile
+  community.general.dconf:
+    key: "/org/gnome/Ptyxis/profile-uuids"
+    value: "['8ace1151de46338b9742684167297aff']"
+
+- name: Set default Ptyxis profile
+  community.general.dconf:
+    key: "/org/gnome/Ptyxis/default-profile-uuid"
+    value: "'8ace1151de46338b9742684167297aff'"
+
+- name: Set Ptyxis appearance to follow system
+  community.general.dconf:
+    key: "/org/gnome/Ptyxis/interface-style"
+    value: "'system'"
+
+- name: Disable Ptyxis system font
+  community.general.dconf:
+    key: "/org/gnome/Ptyxis/use-system-font"
+    value: "false"
+
+- name: Set Ptyxis font name
+  community.general.dconf:
+    key: "/org/gnome/Ptyxis/font-name"
+    value: "'Monospace 12'"
+
+- name: Enable bold-is-bright for Ptyxis profile
+  community.general.dconf:
+    key: "/org/gnome/Ptyxis/Profiles/8ace1151de46338b9742684167297aff/bold-is-bright"
+    value: "true"
+
+- name: Set Ptyxis default profile label
+  community.general.dconf:
+    key: "/org/gnome/Ptyxis/Profiles/8ace1151de46338b9742684167297aff/label"
+    value: "'Default'"
+
+- name: Move window buttons to right
+  community.general.dconf:
+    key: "/org/gnome/desktop/wm/preferences/button-layout"
+    value: "'appmenu:minimize,maximize,close'"
+
+- name: Unset Alt+Tab from 'switch-applications'
+  community.general.dconf:
+    key: "/org/gnome/desktop/wm/keybindings/switch-applications"
+    value: "@as []"
+
+- name: Unset Alt+Tab from 'switch-applications-backward'
+  community.general.dconf:
+    key: "/org/gnome/desktop/wm/keybindings/switch-applications-backward"
+    value: "@as []"
+
+- name: Set Alt+Tab to 'switch-windows'
+  community.general.dconf:
+    key: "/org/gnome/desktop/wm/keybindings/switch-windows"
+    value: "['<Alt>Tab']"
+
+- name: Set Alt+Tab to 'switch-windows-backward'
+  community.general.dconf:
+    key: "/org/gnome/desktop/wm/keybindings/switch-windows-backward"
+    value: "['<Shift><Alt>Tab']"
+
+- name: Disable location services
+  community.general.dconf:
+    key: "/org/gnome/system/location/enabled"
+    value: "false"
+
+- name: Configure GNOME favorites
+  community.general.dconf:
+    key: "/org/gnome/shell/favorite-apps"
+    value: >-
+      ['google-chrome.desktop',
+      'chrome-nlmaamaoahjiilibgbafebhafkeccjac-Default.desktop',
+      'com.github.iwalton3.jellyfin-media-player.desktop',
+      'code.desktop',
+      'org.gnome.TextEditor.desktop',
+      'org.gnome.Nautilus.desktop',
+      'org.gnome.Ptyxis.desktop']
+
+- name: Disable GNOME Weather automatic location-sensing
+  community.general.dconf:
+    key: "/org/gnome/Weather/automatic-location"
+    value: "false"
+
+- name: Set GNOME Weather location
+  community.general.dconf:
+    key: "/org/gnome/Weather/locations"
+    value: >-
+      [<(uint32 2, <('Washington Dulles International Airport,
+      United States of America', '', false,
+      [(0.67984529717596465, -1.3518172479030162)],
+      @a(dd) [])>)>]
+
+- name: Set GNOME Shell weather location
+  community.general.dconf:
+    key: "/org/gnome/shell/Weather/locations"
+    value: >-
+      [<(uint32 2, <('Washington DC,
+      Washington-Dulles International Airport', 'KIAD', false,
+      [(0.67953909224867171, -1.3517138724383084)],
+      @a(dd) [])>)>]
+
+- name: Set 'maximize window' key
+  community.general.dconf:
+    key: "/org/gnome/desktop/wm/keybindings/maximize"
+    value: "['<Super>Up']"
+  changed_when: false # this always gets marked as changed on apollo because it conflicts with the tiling assistant extension

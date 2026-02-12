@@ -1,0 +1,31 @@
+---
+# tasks file for intel
+- name: Copy /etc/modprobe.d/i915.conf
+  become: true
+  ansible.builtin.copy:
+    src: i915.conf
+    dest: /etc/modprobe.d/i915.conf
+    mode: '0644'
+
+- name: Install multimedia and Intel packages
+  become: true
+  ansible.builtin.dnf5:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - gstreamer1-vaapi
+    - intel-gpu-tools
+    - intel-media-driver
+    - libavcodec-freeworld
+    - libva
+    - libva-intel-driver
+    - libva-utils
+    - mesa-dri-drivers
+    - mesa-vulkan-drivers
+  notify: Run dracut
+
+- name: Set Libva driver name
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_facts['user_dir'] }}/.bashrc"
+    insertafter: "^unset rc$"
+    line: "export LIBVA_DRIVER_NAME=iHD"

@@ -1,0 +1,21 @@
+---
+# tasks file for wakeywakey
+- name: Wake apollo
+  community.general.wakeonlan:
+    mac: a4:bb:6d:90:5a:30
+  changed_when: false
+
+# - name: Wake dionysus
+#   wakeonlan:
+#     mac: 8c:ec:4b:67:43:e9
+#   changed_when: false
+
+# - name: Wake hypnos
+#   wakeonlan:
+#     mac: 14:b3:1f:17:42:c3
+#   changed_when: false
+
+# - name: Wake ares
+#   become: true
+#   command: /usr/sbin/ether-wake -i br0 a8:a1:59:08:2d:23
+#   changed_when: false

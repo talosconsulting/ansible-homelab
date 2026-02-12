@@ -1,0 +1,57 @@
+---
+- name: Copy monitors.xml to $HOME/.config/
+  ansible.builtin.copy:
+    src: monitors.xml
+    dest: "{{ ansible_facts['user_dir'] }}/.config/monitors.xml"
+    owner: "{{ ansible_facts['user_id'] }}"
+    group: "{{ ansible_facts['user_gid'] }}"
+    mode: "0644"
+
+- name: Disable Tiling Assistant's tiling popup
+  community.general.dconf:
+    key: "/org/gnome/shell/extensions/tiling-assistant/enable-tiling-popup"
+    value: "false"
+
+- name: Install additional packages
+  become: true
+  ansible.builtin.dnf5:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - android-tools
+    - cups
+    - libnsl
+    - printer-driver-brlaser
+    - system-config-printer
+    - xcb-util-cursor
+
+- name: Stat /usr/local/Brother/
+  ansible.builtin.stat:
+    path: /usr/local/Brother/
+  register: stat_brother
+
+- name: Copy brscan2 RPM
+  ansible.builtin.copy:
+    src: brscan2-0.2.5-1.x86_64.rpm
+    dest: /tmp/
+    mode: "0644"
+  when: stat_brother.stat.isdir is not defined
+
+- name: Install brscan2
+  become: true
+  ansible.builtin.command:
+    cmd: rpm -ivh --nodigest --nofiledigest /tmp/brscan2-0.2.5-1.x86_64.rpm
+    creates: /usr/local/Brother/
+
+- name: Create shell wrappers in /usr/local/bin/
+  become: true
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    owner: "{{ ansible_facts['user_id'] }}"
+    group: "{{ ansible_facts['user_gid'] }}"
+    mode: "0700"
+  with_items:
+    - bookmarks.sh
+    - books.sh
+    - epub2pdf.sh

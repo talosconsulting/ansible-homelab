@@ -1,0 +1,34 @@
+---
+# tasks file for dionysus
+- name: Install Dionysus packages
+  become: true
+  ansible.builtin.dnf5:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - cronie
+    - openal-soft
+    - pulseaudio-utils
+    - SDL2-devel
+
+- name: Enable crond
+  become: true
+  ansible.builtin.systemd:
+    state: started
+    enabled: true
+    masked: false
+    name: crond.service
+
+- name: Copy monitors1080p.xml to $HOME/.config/
+  ansible.builtin.copy:
+    src: monitors1080p.xml
+    dest: "{{ ansible_facts['user_dir'] }}/.config/monitors.xml"
+    owner: "{{ ansible_facts['user_id'] }}"
+    group: "{{ ansible_facts['user_gid'] }}"
+    mode: "0644"
+
+- name: Keep soundbar alive
+  ansible.builtin.cron:
+    name: "Keep soundbar alive"
+    minute: "*/10"
+    job: "/usr/bin/paplay /mnt/zeus/Archive/Linux/Dionysus/19999.wav"

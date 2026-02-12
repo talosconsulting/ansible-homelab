@@ -1,0 +1,16 @@
+---
+# tasks file for fedora-workstation-mobile
+- name: Enable suspend
+  community.general.dconf:
+    key: "/org/gnome/settings-daemon/plugins/power/sleep-inactive-ac-type"
+    value: "'nothing'"
+
+- name: Set suspend timeout (battery)
+  community.general.dconf:
+    key: "/org/gnome/settings-daemon/plugins/power/sleep-inactive-battery-timeout"
+    value: "'900'"
+
+- name: Set touchpad click method
+  community.general.dconf:
+    key: "/org/gnome/desktop/peripherals/touchpad/click-method"
+    value: "'areas'"

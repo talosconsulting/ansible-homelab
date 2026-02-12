@@ -1,0 +1,5 @@
+---
+# handlers file for dionysus
+- name: Run update-desktop-database
+  become: true
+  ansible.builtin.command: /usr/bin/update-desktop-database

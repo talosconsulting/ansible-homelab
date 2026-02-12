@@ -1,0 +1,14 @@
+---
+# tasks file for disable-sleep
+- name: Disable sleep
+  become: true
+  ansible.builtin.systemd:
+    masked: true
+    name: "{{ item }}"
+  loop:
+    - sleep.target
+    - suspend.target
+    - hibernate.target
+    - hybrid-sleep.target
+    - suspend-then-hibernate.target
+  changed_when: false

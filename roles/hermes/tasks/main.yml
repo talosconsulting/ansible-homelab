@@ -1,0 +1,8 @@
+---
+# tasks file for hermes
+- name: Install ALSA UCM
+  become: true
+  ansible.builtin.dnf:
+    name:
+      - alsa-ucm
+    state: present

@@ -1,0 +1,71 @@
+---
+# tasks file for nvidia
+- name: Install akmods
+  become: true
+  ansible.builtin.dnf:
+    name: akmods
+    state: present
+
+- name: Copy akmods certificate
+  become: true
+  ansible.builtin.copy:
+    src: "public_key.der"
+    dest: /etc/pki/akmods/certs/
+    owner: root
+    group: akmods
+    mode: '0400'
+  notify:
+    - Run akmods
+    - Run dracut
+
+- name: Copy akmods key
+  become: true
+  ansible.builtin.copy:
+    src: "private_key.priv"
+    dest: /etc/pki/akmods/private/
+    owner: root
+    group: akmods
+    mode: '0400'
+  notify:
+    - Run akmods
+    - Run dracut
+
+- name: Copy /etc/modprobe.d/nvidia.conf
+  become: true
+  ansible.builtin.copy:
+    src: nvidia.conf
+    dest: /etc/modprobe.d/nvidia.conf
+    mode: '0644'
+  notify:
+    - Run akmods
+    - Run dracut
+
+- name: Install NVIDIA packages
+  become: true
+  ansible.builtin.dnf5:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - gcc
+    - kernel-headers
+    - kernel-devel
+    - akmod-nvidia
+    - xorg-x11-drv-nvidia
+    - xorg-x11-drv-nvidia-libs
+    - xorg-x11-drv-nvidia-libs.i686
+    - xorg-x11-drv-nvidia-cuda
+    - xorg-x11-drv-nvidia-cuda-libs
+    - xorg-x11-drv-nvidia-power
+  notify:
+    - Run akmods
+    - Run dracut
+
+- name: Enable NVIDIA power-saving services
+  become: true
+  ansible.builtin.systemd:
+    enabled: true
+    name: "{{ item }}"
+  loop:
+    - nvidia-hibernate.service
+    - nvidia-resume.service
+    - nvidia-suspend.service

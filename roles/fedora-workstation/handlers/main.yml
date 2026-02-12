@@ -1,0 +1,24 @@
+---
+# handlers file for fedora-workstation
+- name: Run grub2-mkconfig
+  become: true
+  ansible.builtin.command: /usr/sbin/grub2-mkconfig -o /boot/grub2/grub.cfg
+- name: Update CA trust
+  become: true
+  ansible.builtin.command: /usr/bin/update-ca-trust
+- name: Kill tracker daemon
+  become: true
+  ansible.builtin.command: tracker3-daemon --kill
+- name: Delete tracker cache
+  ansible.builtin.file:
+    path: "{{ ansible_facts['user_dir'] }}/.cache/tracker"
+    state: absent
+
+- name: Restart PipeWire
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: restarted
+    scope: user
+  loop:
+    - pipewire
+    - pipewire-pulse

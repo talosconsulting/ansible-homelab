@@ -1,0 +1,9 @@
+---
+# handlers file for hypnos
+- name: Enable wol.service
+  become: true
+  ansible.builtin.systemd_service:
+    name: wol.service
+    state: started
+    enabled: true
+    daemon_reload: true

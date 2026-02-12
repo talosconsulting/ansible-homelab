@@ -1,0 +1,99 @@
+---
+# tasks file for fedora-developer
+- name: Make directory for Bash completion files
+  ansible.builtin.file:
+    path: "{{ ansible_facts['user_dir'] }}/.local/share/bash-completion/completions/"
+    state: directory
+    recurse: true
+
+- name: Add Visual Studio Code DNF repository
+  become: true
+  ansible.builtin.yum_repository:
+    file: vscode
+    name: code
+    description: Visual Studio Code repo
+    baseurl: https://packages.microsoft.com/yumrepos/vscode
+    gpgkey: https://packages.microsoft.com/keys/microsoft.asc
+    gpgcheck: true
+
+- name: Install Visual Studio Code
+  become: true
+  ansible.builtin.dnf:
+    name: code
+    state: present
+
+- name: Install developer packages
+  become: true
+  ansible.builtin.dnf5:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - freerdp
+    - git
+    - helm
+    - kubernetes1.35-client
+    - podman
+    - podman-compose
+
+- name: Install Homebrew packages
+  community.general.homebrew:
+    name:
+      - k9s
+      - krew
+      - kubectx
+      - liquidprompt
+      - stern
+      - yt-dlp
+    state: present
+
+- name: Configure CLI environment and prompt
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_facts['user_dir'] }}/.bashrc"
+    insertafter: "^export LIBVA_DRIVER_NAME=iHD"
+    block: |
+      eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv bash)"
+
+      alias yt-dlp='yt-dlp --write-sub --write-auto-sub --sub-lang "en.*" --sub-format srt'
+
+      # kubernetes-related
+      alias k=kubectl
+      complete -o default -F __start_kubectl k
+
+      [[ -f /home/linuxbrew/.linuxbrew/share/liquidprompt ]] && source /home/linuxbrew/.linuxbrew/share/liquidprompt
+
+- name: Create .kube directory
+  ansible.builtin.file:
+    path: "{{ ansible_facts['user_dir'] }}/.kube"
+    state: directory
+    mode: "0700"
+
+- name: Copy KUBECONFIG
+  ansible.builtin.copy:
+    src: config
+    dest: "{{ ansible_facts['user_dir'] }}/.kube/config"
+    mode: "0600"
+
+- name: Enable Night Light
+  community.general.dconf:
+    key: "/org/gnome/settings-daemon/plugins/color/night-light-enabled"
+    value: "true"
+
+- name: Disable Night Light automatic schedule
+  community.general.dconf:
+    key: "/org/gnome/settings-daemon/plugins/color/night-light-schedule-automatic"
+    value: "false"
+
+- name: Set Night Light manual schedule start
+  community.general.dconf:
+    key: "/org/gnome/settings-daemon/plugins/color/night-light-schedule-from"
+    value: "0.0"
+
+- name: Set Night Light manual schedule end
+  community.general.dconf:
+    key: "/org/gnome/settings-daemon/plugins/color/night-light-schedule-to"
+    value: "0.0"
+
+- name: Set Night Light temperature
+  community.general.dconf:
+    key: "/org/gnome/settings-daemon/plugins/color/night-light-temperature"
+    value: "uint32 3700"
