@@ -47,8 +47,9 @@
     state: present
 
 - name: Install neat krew plugin
-  ansible.builtin.command: /home/linuxbrew/.linuxbrew/bin/kubectl krew install neat
-  creates: "{{ ansible_facts['user_dir'] }}/.krew/bin/kubectl-neat"
+  ansible.builtin.command:
+    cmd: /home/linuxbrew/.linuxbrew/bin/kubectl krew install neat
+    creates: "{{ ansible_facts['user_dir'] }}/.krew/bin/kubectl-neat"
 
 - name: Configure CLI environment and prompt
   ansible.builtin.blockinfile:
