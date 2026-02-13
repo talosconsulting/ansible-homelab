@@ -124,6 +124,7 @@
       ansible.builtin.debug:
         var: fedora_needs_restarting_results['stdout_lines']
 
+# add changed_when directive when we know what a successful upgrade looks like
 - name: Upgrade Homebrew packages on Fedora developer hosts
   hosts: fedora_dev
   tasks:
@@ -134,7 +135,18 @@
       register: upgrade_homebrew
     - name: Display Homebrew upgrade results
       ansible.builtin.debug:
-        var: upgrade_homebrew['changed_pkgs']
+        var: upgrade_homebrew
+
+# add changed_when directive when we know what a successful upgrade looks like
+- name: Upgrade Krew plugins on Fedora developer hosts
+  hosts: fedora_dev
+  tasks:
+    - name: Upgrade Krew plugins
+      ansible.builtin.command: /home/linuxbrew/.linuxbrew/bin/kubectl krew upgrade
+      register: upgrade_krew
+    - name: Display Krew upgrade results
+      ansible.builtin.debug:
+        var: upgrade_krew
 
 - name: Re-enable sleep on Fedora hosts
   hosts: fedora
