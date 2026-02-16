@@ -55,3 +55,8 @@
     - bookmarks.sh
     - books.sh
     - epub2pdf.sh
+
+- name: Enable Num Lock
+  community.general.dconf:
+    key: "/org/gnome/desktop/peripherals/keyboard/remember-numlock-state"
+    value: "true"
