@@ -55,6 +55,8 @@
     state: absent
   with_items:
     - Desktop
+    - Music
+    - Pictures
     - Public
     - Templates
 
