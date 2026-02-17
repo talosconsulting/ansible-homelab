@@ -137,13 +137,13 @@
       ansible.builtin.debug:
         var: upgrade_homebrew
 
-# add changed_when directive when we know what a successful upgrade looks like
 - name: Upgrade Krew plugins on Fedora developer hosts
   hosts: fedora_dev
   tasks:
     - name: Upgrade Krew plugins
       ansible.builtin.command: /home/linuxbrew/.linuxbrew/bin/kubectl krew upgrade
       register: upgrade_krew
+      changed_when: "'Skipping plugin neat' not in upgrade_krew.stderr"
     - name: Display Krew upgrade results
       ansible.builtin.debug:
         var: upgrade_krew
