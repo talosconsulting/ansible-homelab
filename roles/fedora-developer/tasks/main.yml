@@ -32,10 +32,10 @@
     - git
     - helm
     - kubernetes1.35-client
+    - kustomize
     - podman
     - podman-compose
     - rclone
-    - yt-dlp
 
 - name: Configure CLI environment and prompt
   ansible.builtin.blockinfile:
@@ -64,6 +64,7 @@
       - kubectx
       - liquidprompt
       - stern
+      - yq
       - yt-dlp
     state: present
 
