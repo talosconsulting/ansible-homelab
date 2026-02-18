@@ -30,34 +30,24 @@
       ansible.builtin.debug:
         var: el_dnf_results['results']
 
-- name: Upgrade PyPI packages on Zeus
+- name: Upgrade EL hosts
   hosts: localhost
   tasks:
-    - name: Upgrade PyPI packages
-      ansible.builtin.pip:
-        name: "{{ item }}"
-        state: present
-        executable: "{{ ansible_facts['user_dir'] }}/.local/bin/pip"
-        extra_args: --user --upgrade
-      register: pip_results
-      loop:
-        - pip
-        - yt-dlp
-    - name: Display pip upgrade results
+    - name: Upgrade Homebrew packages
+      community.general.homebrew:
+        update_homebrew: true
+        upgrade_all: true
+      register: upgrade_homebrew
+    - name: Display Homebrew upgrade results
       ansible.builtin.debug:
-        var: pip_results['results']|map(attribute='stdout_lines')|list
-
-- name: Upgrade rclone on Zeus
-  hosts: localhost
-  become: true
-  tasks:
-    - name: Upgrade rclone
-      ansible.builtin.command: /usr/local/bin/rclone selfupdate
-      register: rclone_results
-      changed_when: "'rclone is up to date' not in rclone_results['stderr']"
-    - name: Display rclone selfupdate results
+        var: upgrade_homebrew
+    - name: Upgrade Krew plugins
+      ansible.builtin.command: /home/linuxbrew/.linuxbrew/bin/kubectl krew upgrade
+      register: upgrade_krew
+      changed_when: "'Skipping plugin neat' not in upgrade_krew.stderr"
+    - name: Display Krew upgrade results
       ansible.builtin.debug:
-        var: rclone_results
+        var: upgrade_krew
 
 - name: Upgrade Windows hosts
   hosts: windows
@@ -124,7 +114,6 @@
       ansible.builtin.debug:
         var: fedora_needs_restarting_results['stdout_lines']
 
-# add changed_when directive when we know what a successful upgrade looks like
 - name: Upgrade Homebrew packages on Fedora developer hosts
   hosts: fedora_dev
   tasks:
