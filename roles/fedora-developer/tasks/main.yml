@@ -34,6 +34,8 @@
     - kubernetes1.35-client
     - podman
     - podman-compose
+    - rclone
+    - yt-dlp
 
 - name: Configure CLI environment and prompt
   ansible.builtin.blockinfile:
