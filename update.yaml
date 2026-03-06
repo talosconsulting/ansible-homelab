@@ -37,10 +37,7 @@
       community.general.homebrew:
         update_homebrew: true
         upgrade_all: true
-      register: upgrade_homebrew
-    - name: Display Homebrew upgrade results
-      ansible.builtin.debug:
-        var: upgrade_homebrew
+      changed_when: false
     - name: Upgrade Krew plugins
       ansible.builtin.command: /home/linuxbrew/.linuxbrew/bin/kubectl krew upgrade
       register: upgrade_krew
@@ -121,10 +118,7 @@
       community.general.homebrew:
         update_homebrew: true
         upgrade_all: true
-      register: upgrade_homebrew
-    - name: Display Homebrew upgrade results
-      ansible.builtin.debug:
-        var: upgrade_homebrew
+      changed_when: false
 
 - name: Upgrade Krew plugins on Fedora developer hosts
   hosts: fedora_dev
