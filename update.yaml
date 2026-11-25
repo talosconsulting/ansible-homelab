@@ -1,0 +1,283 @@
+---
+- name: Wake hosts
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Wake apollo without aborting controller updates if offline
+      block:
+        - name: Run wakeywakey role
+          ansible.builtin.include_role:
+            name: wakeywakey
+      rescue:
+        - name: Warn that apollo did not wake
+          ansible.builtin.debug:
+            msg: "apollo did not respond to Wake-on-LAN; continuing with remaining hosts."
+
+- name: Upgrade EL hosts
+  hosts: el
+  vars:
+    clean: false
+  become: true
+  tasks:
+    - name: Clear DNF cache
+      ansible.builtin.command: dnf clean all
+      when: clean | bool
+      changed_when: false
+    - name: Upgrade DNF packages
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_only: true
+        update_cache: true
+      register: el_dnf_results
+    - name: Display DNF upgrade results
+      ansible.builtin.debug:
+        var: el_dnf_results['results']
+      when: el_dnf_results is not skipped
+
+- name: Upgrade Windows hosts
+  hosts: windows
+  ignore_unreachable: true
+  tasks:
+    - name: Upgrade Windows host
+      ansible.windows.win_updates:
+        category_names: "*"
+        reboot: true
+        reboot_timeout: 3600
+      register: windows_update_results
+    - name: Display Windows Update results
+      ansible.builtin.debug:
+        var: windows_update_results['updates']
+      when:
+        - windows_update_results is not unreachable
+        - windows_update_results is not skipped
+
+# zeus is the controller (localhost); targeting localhost:fedora keeps dev-tool
+# updates off the other EL hosts. always: re-enables sleep if a task fails, but
+# not if a host becomes unreachable; enable-sleep (jobsdone.yaml) undoes that.
+- name: Upgrade Fedora hosts and developer tools
+  hosts: localhost:fedora
+  vars:
+    clean: false
+  tasks:
+    - name: Run Fedora OS and developer tool upgrades
+      block:
+        - name: Upgrade Fedora OS
+          when: "'fedora' in group_names"
+          block:
+            - name: Disable sleep on Fedora hosts
+              ansible.builtin.include_role:
+                name: disable-sleep
+
+            # fwupdmgr exits 2 when there is nothing to do. Other failures, such as
+            # a laptop on battery, mustn't hold back package upgrades.
+            - name: Upgrade firmware
+              become: true
+              block:
+                - name: Refresh fwupdmgr
+                  ansible.builtin.command: fwupdmgr refresh --force
+                  register: refresh_fwupdmgr
+                  changed_when: false
+                  failed_when: refresh_fwupdmgr['rc'] not in [0, 2]
+                - name: Get updates for fwupdmgr
+                  ansible.builtin.command: fwupdmgr get-updates
+                  register: get_updates_for_fwupdmgr
+                  changed_when: false
+                  check_mode: false
+                  failed_when: get_updates_for_fwupdmgr['rc'] not in [0, 2]
+                - name: Display fwupdmgr get-updates results
+                  ansible.builtin.debug:
+                    var: get_updates_for_fwupdmgr['stdout_lines']
+                - name: Apply updates for fwupdmgr
+                  ansible.builtin.command: fwupdmgr update --assume-yes --no-reboot-check
+                  register: apply_updates_for_fwupdmgr
+                  changed_when: apply_updates_for_fwupdmgr['rc'] == 0
+                  failed_when: apply_updates_for_fwupdmgr['rc'] not in [0, 2]
+                  when: get_updates_for_fwupdmgr['rc'] == 0
+                - name: Display fwupdmgr update results
+                  ansible.builtin.debug:
+                    var: apply_updates_for_fwupdmgr['stdout_lines']
+                  when: apply_updates_for_fwupdmgr is not skipped
+              rescue:
+                - name: Warn that firmware was not upgraded
+                  ansible.builtin.debug:
+                    msg: >-
+                      {{ ansible_failed_task['name'] }} failed; continuing without firmware upgrades.
+                      {{ ansible_failed_result['stderr'] | default(ansible_failed_result['msg'] | default('')) }}
+
+            - name: Upgrade packages
+              become: true
+              block:
+                - name: Clear DNF cache on Fedora hosts
+                  ansible.builtin.command: nice dnf clean all
+                  when: clean | bool
+                  changed_when: false
+                - name: Upgrade all packages
+                  ansible.builtin.dnf5:
+                    name: "*"
+                    state: latest
+                    update_only: true
+                    update_cache: true
+                  register: fedora_dnf_results
+                - name: Display DNF upgrade results
+                  ansible.builtin.debug:
+                    var: fedora_dnf_results['results']
+                - name: Check if host needs restarting
+                  ansible.builtin.command: /usr/bin/needs-restarting -r
+                  register: fedora_needs_restarting_results
+                  changed_when: fedora_needs_restarting_results['rc'] == 1
+                  check_mode: false
+                  failed_when: fedora_needs_restarting_results['rc'] not in [0, 1]
+                - name: Display needs-restarting results
+                  ansible.builtin.debug:
+                    var: fedora_needs_restarting_results['stdout_lines']
+
+        - name: Upgrade developer tools
+          when: inventory_hostname == 'localhost' or 'fedora_dev' in group_names
+          block:
+            - name: Check for Homebrew
+              ansible.builtin.stat:
+                path: /home/linuxbrew/.linuxbrew/bin/brew
+              register: brew_binary
+            - name: Upgrade Homebrew packages
+              community.general.homebrew:
+                update_homebrew: true
+                upgrade_all: true
+              changed_when: false
+              when: brew_binary['stat']['exists']
+
+            - name: Check for kubectl-krew
+              ansible.builtin.stat:
+                path: /home/linuxbrew/.linuxbrew/bin/kubectl-krew
+              register: krew_binary
+            - name: Upgrade Krew plugins
+              ansible.builtin.command: /home/linuxbrew/.linuxbrew/bin/kubectl krew upgrade
+              environment:
+                PATH: "/home/linuxbrew/.linuxbrew/bin:{{ ansible_facts['env']['PATH'] }}"
+              register: upgrade_krew
+              changed_when: "'Upgraded plugin' in (upgrade_krew['stdout'] ~ upgrade_krew['stderr'])"
+              when: krew_binary['stat']['exists']
+            - name: Display Krew upgrade results
+              ansible.builtin.debug:
+                var: upgrade_krew['stdout_lines']
+              when: upgrade_krew is not skipped
+
+            - name: Check for Claude Code
+              ansible.builtin.stat:
+                path: "{{ ansible_facts['env']['HOME'] }}/.local/bin/claude"
+              register: claude_binary
+            - name: Update Claude Code
+              ansible.builtin.command: "{{ ansible_facts['env']['HOME'] }}/.local/bin/claude update"
+              register: claude_update
+              changed_when: "'up to date' not in (claude_update['stdout'] ~ claude_update['stderr'])"
+              when: claude_binary['stat']['exists']
+            - name: Display Claude Code update results
+              ansible.builtin.debug:
+                var: claude_update['stdout_lines']
+              when: claude_update is not skipped
+
+            - name: Check for agy
+              ansible.builtin.stat:
+                path: "{{ ansible_facts['env']['HOME'] }}/.local/bin/agy"
+              register: agy_binary
+            - name: Update agy
+              ansible.builtin.command: "{{ ansible_facts['env']['HOME'] }}/.local/bin/agy update"
+              register: agy_update
+              changed_when: "'already on the latest version.' not in (agy_update['stdout'] ~ agy_update['stderr'])"
+              when: agy_binary['stat']['exists']
+            - name: Display agy update results
+              ansible.builtin.debug:
+                var: agy_update['stdout_lines']
+              when: agy_update is not skipped
+      always:
+        - name: Re-enable sleep on Fedora hosts
+          ansible.builtin.include_role:
+            name: enable-sleep
+          when: "'fedora' in group_names"
+
+# Runs after host upgrades so a new collection version can't change module
+# behaviour partway through. zeus is the controller (localhost), so these are
+# the collections every playbook here runs with.
+- name: Upgrade Ansible and its collections on zeus
+  hosts: localhost
+  tasks:
+    - name: List installed collections
+      ansible.builtin.command: >-
+        {{ ansible_facts['env']['HOME'] }}/.local/bin/ansible-galaxy
+        collection list --format json
+      register: installed_collections
+      changed_when: false
+      check_mode: false
+    - name: Upgrade installed collections
+      ansible.builtin.command:
+        argv: >-
+          {{ [ansible_facts['env']['HOME'] ~ '/.local/bin/ansible-galaxy',
+              'collection', 'install', '--upgrade'] + collection_names }}
+      vars:
+        # The JSON maps each collections path to the collections installed there.
+        collection_names: >-
+          {{ (installed_collections['stdout'] | from_json).values()
+             | map('list') | flatten | unique }}
+      when: collection_names | length > 0
+      register: upgrade_collections
+      changed_when: "'was installed successfully' in upgrade_collections['stdout']"
+    - name: Display collection upgrade results
+      ansible.builtin.debug:
+        var: upgrade_collections['stdout_lines']
+      when: upgrade_collections is not skipped
+    # Last before remote-control restarts because this replaces the ansible-core
+    # running this playbook. Upgrading ansible-lint also upgrades ansible-core.
+    - name: Upgrade ansible-lint and ansible-core
+      ansible.builtin.command: uv tool upgrade ansible-lint
+      register: upgrade_ansible_tools
+      changed_when: "'Nothing to upgrade' not in upgrade_ansible_tools['stderr']"
+    - name: Display ansible-lint and ansible-core upgrade results
+      ansible.builtin.debug:
+        var: upgrade_ansible_tools['stderr_lines']
+      when: upgrade_ansible_tools is not skipped
+
+# Runs very last so restarting a remote-control daemon can't terminate a session
+# running this playbook before sleep is re-enabled and Ansible is upgraded.
+- name: Restart active remote-control services on zeus if updated
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Check if claude-remote-control is active
+      ansible.builtin.systemd_service:
+        name: claude-remote-control
+        scope: user
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"
+      register: claude_service_status
+      check_mode: false
+      when: claude_update is defined and claude_update is changed
+    - name: Restart claude-remote-control
+      ansible.builtin.systemd_service:
+        name: claude-remote-control
+        scope: user
+        state: restarted
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"
+      when:
+        - claude_update is defined and claude_update is changed
+        - claude_service_status['status']['ActiveState'] | default('') == 'active'
+
+    - name: Check if agy-remote-control is active
+      ansible.builtin.systemd_service:
+        name: agy-remote-control
+        scope: user
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"
+      register: agy_service_status
+      check_mode: false
+      when: agy_update is defined and agy_update is changed
+    - name: Restart agy-remote-control
+      ansible.builtin.systemd_service:
+        name: agy-remote-control
+        scope: user
+        state: restarted
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"
+      when:
+        - agy_update is defined and agy_update is changed
+        - agy_service_status['status']['ActiveState'] | default('') == 'active'

@@ -1,0 +1,66 @@
+---
+- name: Wake up hosts
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Wake apollo without aborting if offline
+      block:
+        - name: Run wakeywakey role
+          ansible.builtin.include_role:
+            name: wakeywakey
+      rescue:
+        - name: Warn that apollo did not wake
+          ansible.builtin.debug:
+            msg: "apollo did not respond to Wake-on-LAN; continuing with remaining hosts."
+
+# force_handlers: a handler notified before another task fails (dracut, say) would
+# otherwise never run, because the next run no longer sees a change.
+- name: Configure Fedora hosts
+  hosts: fedora
+  force_handlers: true
+  tasks:
+    - name: Configure Fedora host with sleep disabled
+      block:
+        - name: Disable sleep while configuring
+          ansible.builtin.include_role:
+            name: disable-sleep
+        - name: Apply fedora-workstation role
+          ansible.builtin.include_role:
+            name: fedora-workstation
+        - name: Apply gnome-extensions role
+          ansible.builtin.include_role:
+            name: lordtaytertot.gnome-extensions
+        - name: Apply fedora-workstation-stationary role
+          ansible.builtin.include_role:
+            name: fedora-workstation-stationary
+          when: "'fedora_stationary' in group_names"
+        - name: Apply solaar role
+          ansible.builtin.include_role:
+            name: solaar
+          when: "'fedora_stationary' in group_names"
+        - name: Apply fedora-workstation-mobile role
+          ansible.builtin.include_role:
+            name: fedora-workstation-mobile
+          when: "'fedora_mobile' in group_names"
+        - name: Apply fedora-developer role
+          ansible.builtin.include_role:
+            name: fedora-developer
+          when: "'fedora_dev' in group_names"
+        - name: Apply intel role
+          ansible.builtin.include_role:
+            name: intel
+          when: "'intel' in group_names"
+        - name: Apply apollo role
+          ansible.builtin.include_role:
+            name: apollo
+          when: inventory_hostname == 'apollo'
+        - name: Apply hermes role
+          ansible.builtin.include_role:
+            name: hermes
+          when: inventory_hostname == 'hermes'
+        - name: Run handlers while sleep is still disabled
+          ansible.builtin.meta: flush_handlers
+      always:
+        - name: Re-enable power saving on Fedora hosts
+          ansible.builtin.include_role:
+            name: enable-sleep

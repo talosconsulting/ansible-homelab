@@ -1,0 +1,12 @@
+# Local state and logs (ansible.log records host details and module output)
+.ansible/
+ansible.log
+
+# Private values
+host_vars/localhost
+
+# Kept locally, not redistributable: see roles/apollo/tasks/main.yml
+*.rpm
+
+roles/zeus/
+zeus.yaml

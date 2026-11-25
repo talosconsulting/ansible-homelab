@@ -1,0 +1,127 @@
+---
+- name: Copy monitors.xml to /etc/xdg/ for GDM
+  become: true
+  ansible.builtin.copy:
+    src: monitors.xml
+    dest: /etc/xdg/monitors.xml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Copy monitors.xml to $HOME/.config/
+  ansible.builtin.copy:
+    src: monitors.xml
+    dest: "{{ ansible_facts['user_dir'] }}/.config/monitors.xml"
+    owner: "{{ ansible_facts['user_id'] }}"
+    group: "{{ ansible_facts['user_gid'] }}"
+    mode: "0644"
+
+- name: Disable Tiling Assistant's tiling popup
+  community.general.dconf:
+    key: "/org/gnome/shell/extensions/tiling-assistant/enable-tiling-popup"
+    value: "false"
+
+- name: Install additional packages
+  become: true
+  ansible.builtin.package:
+    name:
+      - android-tools
+      - cups
+      - ethtool
+      - libnsl
+      - libusb-compat-0.1
+      - printer-driver-brlaser
+      - system-config-printer
+      - xcb-util-cursor
+    state: present
+
+- name: Enable and start CUPS service
+  become: true
+  ansible.builtin.service:
+    name: cups
+    enabled: true
+    state: started
+
+- name: Install pdftopdf fallback filter
+  become: true
+  ansible.builtin.copy:
+    src: pdftopdf-fallback
+    dest: /usr/lib/cups/filter/pdftopdf-fallback
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Prefer pdftopdf fallback filter over stock pdftopdf
+  become: true
+  ansible.builtin.copy:
+    src: pdftopdf-fallback.convs
+    dest: /etc/cups/local.convs
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart CUPS
+
+- name: Stat /usr/local/Brother/
+  ansible.builtin.stat:
+    path: /usr/local/Brother/
+  register: apollo_stat_brother
+
+# Brother's license is all-rights-reserved, so the RPM isn't in this repository.
+# Put it in roles/apollo/files/ before configuring a fresh apollo. The checksum
+# is the only integrity check, because the RPM is unsigned.
+- name: Copy brscan2 RPM
+  become: true
+  ansible.builtin.copy:
+    src: brscan2-0.2.5-1.x86_64.rpm
+    dest: /root/brscan2-0.2.5-1.x86_64.rpm
+    owner: root
+    group: root
+    mode: "0600"
+  when: not apollo_stat_brother.stat.exists
+
+- name: Verify brscan2 RPM checksum
+  become: true
+  ansible.builtin.stat:
+    path: /root/brscan2-0.2.5-1.x86_64.rpm
+    checksum_algorithm: sha256
+  register: apollo_brscan2_rpm
+  failed_when: >-
+    apollo_brscan2_rpm['stat']['checksum'] | default('')
+    != 'ab02c4e2292e9847a0338a225973735ccaec49c3d443f584004c8f91f5d6a8c9'
+  when:
+    - not apollo_stat_brother.stat.exists
+    - not ansible_check_mode
+
+# The brscan2 RPM is unsigned and fails digest checks, which the dnf module can't skip.
+- name: Install brscan2
+  become: true
+  ansible.builtin.command:  # noqa: command-instead-of-module
+    cmd: rpm -ivh --nosignature --nodigest --nofiledigest /root/brscan2-0.2.5-1.x86_64.rpm
+    creates: /usr/local/Brother/
+
+- name: Create shell wrappers in /usr/local/bin/
+  become: true
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - bookmarks.sh
+    - books.sh
+    - epub2pdf.sh
+
+- name: Enable Num Lock
+  community.general.dconf:
+    key: "/org/gnome/desktop/peripherals/keyboard/remember-numlock-state"
+    value: "true"
+
+- name: Install Wake-on-LAN sleep hook (re-arm WoL, recover NIC from ULP failures)
+  become: true
+  ansible.builtin.template:
+    src: wol.j2
+    dest: /usr/lib/systemd/system-sleep/wol
+    owner: root
+    group: root
+    mode: "0755"

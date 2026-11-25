@@ -1,0 +1,6 @@
+---
+# handlers file for fedora-workstation-mobile
+- name: Reload NetworkManager configuration
+  become: true
+  ansible.builtin.command: nmcli general reload conf
+  changed_when: true

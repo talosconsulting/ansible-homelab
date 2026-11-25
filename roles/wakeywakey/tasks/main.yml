@@ -1,0 +1,31 @@
+---
+# tasks file for wakeywakey
+# Magic packets are fire-and-forget UDP; send a few so one lost packet
+# doesn't leave the host asleep, and send another round if it isn't up yet.
+- name: Wake apollo
+  block:
+    - name: Send magic packets to apollo
+      community.general.wakeonlan:
+        mac: "{{ wakeywakey_mac }}"
+        broadcast: "{{ wakeywakey_broadcast }}"
+      loop: "{{ range(3) | list }}"
+      changed_when: false
+
+    - name: Wait for apollo to accept SSH
+      ansible.builtin.wait_for:
+        host: "{{ wakeywakey_host }}"
+        port: 22
+        timeout: 60
+  rescue:
+    - name: Resend magic packets to apollo
+      community.general.wakeonlan:
+        mac: "{{ wakeywakey_mac }}"
+        broadcast: "{{ wakeywakey_broadcast }}"
+      loop: "{{ range(3) | list }}"
+      changed_when: false
+
+    - name: Wait again for apollo to accept SSH
+      ansible.builtin.wait_for:
+        host: "{{ wakeywakey_host }}"
+        port: 22
+        timeout: 120

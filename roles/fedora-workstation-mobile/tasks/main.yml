@@ -1,0 +1,46 @@
+---
+# tasks file for fedora-workstation-mobile
+- name: Install DNF Automatic
+  become: true
+  ansible.builtin.package:
+    name: dnf-automatic
+    state: present
+
+- name: Configure automatic installation of updates
+  become: true
+  ansible.builtin.copy:
+    src: automatic.conf
+    dest: /etc/dnf/automatic.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable and start dnf5-automatic timer
+  become: true
+  ansible.builtin.systemd_service:
+    name: dnf5-automatic.timer
+    enabled: true
+    state: started
+
+- name: Disable suspend on AC
+  community.general.dconf:
+    key: "/org/gnome/settings-daemon/plugins/power/sleep-inactive-ac-type"
+    value: "'nothing'"
+
+- name: Set suspend timeout (battery)
+  community.general.dconf:
+    key: "/org/gnome/settings-daemon/plugins/power/sleep-inactive-battery-timeout"
+    value: "900"
+
+# Shares its name with the file in /usr/lib/NetworkManager/conf.d so that it
+# hides Fedora's default of wifi.cloned-mac-address=stable-ssid, whose generated
+# address changes on reinstall and breaks DHCP reservations.
+- name: Disable MAC address randomization
+  become: true
+  ansible.builtin.copy:
+    src: 22-wifi-mac-addr.conf
+    dest: /etc/NetworkManager/conf.d/22-wifi-mac-addr.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload NetworkManager configuration

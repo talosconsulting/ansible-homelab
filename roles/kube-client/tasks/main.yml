@@ -1,0 +1,47 @@
+---
+# tasks file for kube-client
+- name: Install Kubernetes packages
+  become: true
+  ansible.builtin.package:
+    name:
+      - helm
+      - kubernetes1.35-client
+      - kustomize
+    state: present
+
+- name: Configure Kubernetes CLI environment and completions
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_facts['user_dir'] }}/.bashrc"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK (kube-client)"
+    block: |
+      export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
+
+      # completion
+      source <( kubectl completion bash )
+      source <( helm completion bash )
+      source <( kubectl neat completion bash )
+      complete -o default -F __start_kubectl k
+
+      alias k=kubectl
+
+- name: Install Kubernetes Homebrew packages
+  community.general.homebrew:
+    name:
+      - k9s
+      - krew
+      - kubectx
+      - stern
+    state: latest
+
+- name: Install neat krew plugin
+  ansible.builtin.command:
+    cmd: /home/linuxbrew/.linuxbrew/bin/kubectl krew install neat
+    creates: "{{ ansible_facts['user_dir'] }}/.krew/bin/kubectl-neat"
+  environment:
+    PATH: "/home/linuxbrew/.linuxbrew/bin:{{ ansible_facts['env']['PATH'] }}"
+
+- name: Create .kube directory
+  ansible.builtin.file:
+    path: "{{ ansible_facts['user_dir'] }}/.kube"
+    state: directory
+    mode: "0700"

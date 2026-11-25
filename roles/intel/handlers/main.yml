@@ -1,0 +1,6 @@
+---
+# handlers file for intel
+- name: Run dracut
+  become: true
+  ansible.builtin.command: /usr/bin/dracut --force
+  changed_when: true

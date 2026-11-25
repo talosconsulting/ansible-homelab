@@ -1,0 +1,80 @@
+#!/bin/sh
+# Managed by Ansible.
+# The I219 (e1000e) on this board intermittently fails to leave ULP on resume
+# ("Failed to disable ULP" / "Hardware Error"). The NIC is then wedged: no
+# link, and on the next suspend the driver logs "Failed to enable wakeup", so
+# magic packets are ignored and only the keyboard can wake the machine.
+#
+# post: if this resume logged that failure, reset the NIC right away.
+# pre:  if the NIC is still unhealthy, reset it, then re-arm WoL and verify.
+# Run "wol recover" by hand to force a reset.
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+IF='{{ wol_interface }}'
+STAMP=/run/wol-hook.stamp
+TAG=wol-hook
+
+log() { logger -t "$TAG" "$*"; }
+
+wait_for_iface() {
+    i=0
+    while [ ! -e "/sys/class/net/$IF" ] && [ $i -lt 20 ]; do
+        sleep 0.5
+        i=$((i + 1))
+    done
+}
+
+# Succeeds (exit 0) if the kernel logged the ULP failure since the last hook run.
+ulp_failed() {
+    since=$(cat "$STAMP" 2>/dev/null)
+    [ -n "$since" ] || since=$(date -d '-10 min' +%s)
+    journalctl -k -o cat --since "@$since" 2>/dev/null |
+        grep -qE "$IF: (Failed to disable ULP|Hardware Error)"
+}
+
+arm_wol() {
+    ethtool -s "$IF" wol g
+    ethtool "$IF" | grep -Eq '^[[:space:]]*Wake-on:[[:space:]]*.*g' ||
+        log "WoL NOT armed on $IF"
+}
+
+recover() {
+    log "resetting $IF: $1"
+    pci=$(readlink -f "/sys/class/net/$IF/device" 2>/dev/null || true)
+    if modprobe -r e1000e; then
+        modprobe e1000e || log "failed to reload e1000e"
+    else
+        log "failed to unload e1000e"
+    fi
+    wait_for_iface
+    if [ ! -e "/sys/class/net/$IF" ]; then
+        log "driver reload did not bring $IF back; rescanning PCI"
+        [ -n "$pci" ] && [ -e "$pci/remove" ] && echo 1 > "$pci/remove"
+        sleep 1
+        echo 1 > /sys/bus/pci/rescan
+        wait_for_iface
+    fi
+}
+
+case "$1" in
+    post)
+        ulp_failed && recover "ULP exit failed on resume"
+        ;;
+    pre)
+        if ulp_failed; then
+            recover "ULP failure logged since last resume"
+        elif [ "$(cat "/sys/class/net/$IF/carrier" 2>/dev/null)" != 1 ]; then
+            recover "no carrier before suspend"
+        fi
+        arm_wol
+        ;;
+    recover)
+        recover "manual"
+        arm_wol
+        ;;
+    *)
+        echo "usage: $0 {pre|post|recover}" >&2
+        exit 2
+        ;;
+esac
+date +%s > "$STAMP"
+exit 0

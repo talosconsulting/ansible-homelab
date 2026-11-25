@@ -1,0 +1,136 @@
+---
+# tasks file for fedora-developer
+- name: Make directory for Bash completion files
+  ansible.builtin.file:
+    path: "{{ ansible_facts['user_dir'] }}/.local/share/bash-completion/completions/"
+    state: directory
+    mode: "0755"
+
+- name: Add Visual Studio Code DNF repository
+  become: true
+  ansible.builtin.yum_repository:
+    file: vscode
+    name: code
+    description: Visual Studio Code repo
+    baseurl: https://packages.microsoft.com/yumrepos/vscode
+    gpgkey: https://packages.microsoft.com/keys/microsoft.asc
+    gpgcheck: true
+
+- name: Install Visual Studio Code
+  become: true
+  ansible.builtin.package:
+    name: code
+    state: present
+
+- name: Install developer packages
+  become: true
+  ansible.builtin.package:
+    name:
+      - freerdp
+      - git
+      - podman
+      - podman-compose
+      - rclone
+    state: present
+
+- name: Install Homebrew prerequisites
+  become: true
+  ansible.builtin.package:
+    name:
+      - curl
+      - file
+      - gcc
+      - git
+      - make
+      - procps-ng
+    state: present
+
+# The installer refuses to run as root and uses sudo itself to create
+# /home/linuxbrew. Fetching it first keeps a failed download from being run.
+- name: Install Homebrew
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      installer=$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)
+      /bin/bash -c "$installer"
+    creates: /home/linuxbrew/.linuxbrew/bin/brew
+    executable: /bin/bash
+  environment:
+    NONINTERACTIVE: "1"
+
+- name: Configure CLI environment and prompt
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_facts['user_dir'] }}/.bashrc"
+    block: |
+      eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv bash)"
+
+      alias yt-dlp='yt-dlp --write-sub --write-auto-sub --sub-lang "en.*" --sub-format srt'
+
+      [[ -f /home/linuxbrew/.linuxbrew/share/liquidprompt ]] && source /home/linuxbrew/.linuxbrew/share/liquidprompt
+
+- name: Install Homebrew packages
+  community.general.homebrew:
+    name:
+      - ansible-lint
+      - liquidprompt
+      - yq
+      - yt-dlp
+    state: latest
+
+- name: Configure Liquid Prompt
+  ansible.builtin.copy:
+    src: liquidpromptrc
+    dest: "{{ ansible_facts['user_dir'] }}/.liquidpromptrc"
+    mode: "0644"
+
+- name: Install AI coding CLIs
+  ansible.builtin.shell:
+    cmd: set -o pipefail && curl -fsSL {{ item.url }} | bash
+    creates: "{{ ansible_facts['user_dir'] }}/.local/bin/{{ item.bin }}"
+    executable: /bin/bash
+  loop:
+    - bin: agy
+      url: https://antigravity.google/cli/install.sh
+    - bin: claude
+      url: https://claude.ai/install.sh
+  loop_control:
+    label: "{{ item.bin }}"
+
+- name: Ensure Antigravity CLI config directory exists
+  ansible.builtin.file:
+    path: "{{ ansible_facts['user_dir'] }}/.gemini/antigravity-cli"
+    state: directory
+    mode: "0700"
+
+- name: Check for existing Antigravity CLI settings
+  ansible.builtin.stat:
+    path: "{{ ansible_facts['user_dir'] }}/.gemini/antigravity-cli/settings.json"
+  register: fedora_developer_agy_settings_stat
+
+- name: Read existing Antigravity CLI settings
+  ansible.builtin.slurp:
+    path: "{{ ansible_facts['user_dir'] }}/.gemini/antigravity-cli/settings.json"
+  register: fedora_developer_agy_settings_raw
+  when:
+    - fedora_developer_agy_settings_stat['stat']['exists']
+    - fedora_developer_agy_settings_stat['stat']['size'] > 0
+
+- name: Enable alt-screen mode in Antigravity CLI settings
+  ansible.builtin.copy:
+    content: >
+      {{
+        fedora_developer_agy_settings
+        | combine({'altScreenMode': 'always'})
+        | to_nice_json(indent=2)
+      }}
+    dest: "{{ ansible_facts['user_dir'] }}/.gemini/antigravity-cli/settings.json"
+    mode: "0600"
+  vars:
+    fedora_developer_agy_settings: >-
+      {{
+        (fedora_developer_agy_settings_raw['content'] | b64decode | from_json)
+        if (fedora_developer_agy_settings_stat['stat']['exists']
+            and fedora_developer_agy_settings_stat['stat']['size'] > 0)
+        else {}
+      }}
+  when: fedora_developer_agy_settings['altScreenMode'] | default('') != 'always'

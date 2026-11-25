@@ -1,0 +1,8 @@
+---
+# Pin the system Python; discovery otherwise picks Homebrew's, which comes
+# first in PATH and lacks the distro bindings (libdnf5, rpm, selinux).
+ansible_python_interpreter: /usr/bin/python3
+
+gnome_extension_ids:
+  - 517
+  - 5470

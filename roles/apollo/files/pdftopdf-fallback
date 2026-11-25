@@ -1,0 +1,68 @@
+#!/bin/bash
+# Managed by Ansible.
+# CUPS filter wrapping pdftopdf, selected over it by /etc/cups/local.convs.
+#
+# libcupsfilters 2.2.1 pdftopdf exits 1 with no output on a page with three or
+# more printable annotations lacking appearance streams, which is how Chrome
+# writes hyperlinks. Run the real filter first; only if it fails, retry on a
+# Ghostscript-rewritten copy without annotations. Hyperlinks mean nothing on
+# paper, and normal jobs pass through unchanged.
+#
+# Safe to remove (with local.convs) once a fixed libcupsfilters ships.
+
+set -u
+
+real_filter=/usr/lib/cups/filter/pdftopdf
+
+workdir=$(mktemp -d "${TMPDIR:-/tmp}/pdftopdf-fallback.XXXXXX") || exit 1
+child=
+on_term() {
+    if [ -n "$child" ]; then
+        kill -TERM "$child" 2>/dev/null
+        wait "$child" 2>/dev/null
+    fi
+    exit 143
+}
+trap 'rm -rf "$workdir"' EXIT
+trap on_term TERM
+
+# Run in the background so that the TERM trap fires while the child is running.
+# Bash would otherwise give a background job /dev/null as its stdin.
+run_child() {
+    "$@" <&0 &
+    child=$!
+    wait "$child"
+    local rc=$?
+    child=
+    return "$rc"
+}
+
+# CUPS passes the input as argv[6], or on stdin when there is no sixth argument.
+# The input may be read twice, so stdin has to be saved to a file.
+if [ $# -ge 6 ]; then
+    input=$6
+else
+    input=$workdir/input.pdf
+    run_child cat >"$input" || exit 1
+fi
+
+# Output is held back until the filter succeeds so that a failed attempt can't
+# send a partial document down the pipeline.
+if run_child "$real_filter" "$1" "$2" "$3" "$4" "$5" "$input" >"$workdir/out" 2>"$workdir/err"; then
+    cat "$workdir/err" >&2
+    cat "$workdir/out"
+    exit $?
+fi
+
+# Demote these, since an ERROR: line would otherwise look like a failed job.
+sed 's/^/DEBUG: first attempt: /' "$workdir/err" >&2
+echo "WARNING: pdftopdf failed; retrying without PDF annotations" >&2
+
+if ! run_child gs -q -dSAFER -dBATCH -dNOPAUSE -dPreserveAnnots=false -sDEVICE=pdfwrite \
+    -sOutputFile="$workdir/rewritten.pdf" "$input" >"$workdir/gs.log" 2>&1; then
+    sed 's/^/DEBUG: gs: /' "$workdir/gs.log" >&2
+    echo "ERROR: Ghostscript could not rewrite the PDF" >&2
+    exit 1
+fi
+
+run_child "$real_filter" "$1" "$2" "$3" "$4" "$5" "$workdir/rewritten.pdf"

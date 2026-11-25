@@ -1,0 +1,20 @@
+---
+# handlers file for fedora-workstation
+- name: Check for active user systemd bus
+  ansible.builtin.stat:
+    path: "/run/user/{{ ansible_facts['user_uid'] }}/bus"
+  register: fedora_workstation_user_bus
+  listen: Restart PipeWire
+
+- name: Restart PipeWire services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: restarted
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ ansible_facts['user_uid'] }}"
+  loop:
+    - pipewire
+    - pipewire-pulse
+  when: fedora_workstation_user_bus['stat']['exists'] | default(false)
+  listen: Restart PipeWire

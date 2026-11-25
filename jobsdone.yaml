@@ -1,0 +1,5 @@
+---
+- name: Enable sleep on stationary hosts
+  hosts: fedora_stationary
+  roles:
+    - enable-sleep

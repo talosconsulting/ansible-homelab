@@ -1,0 +1,4 @@
+# Managed by Ansible.
+# Prefer pdftopdf-fallback over the stock pdftopdf (cost 66). See the comment in
+# /usr/lib/cups/filter/pdftopdf-fallback.
+application/pdf		application/vnd.cups-pdf		60	pdftopdf-fallback
