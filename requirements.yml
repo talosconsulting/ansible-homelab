@@ -5,4 +5,4 @@ collections:
   - name: community.general
 
 roles:
-  - name: lordtaytertot.gnome-extensions
+  - name: lordtaytertot.gnome_extensions

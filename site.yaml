@@ -29,7 +29,7 @@
             name: fedora-workstation
         - name: Apply gnome-extensions role
           ansible.builtin.include_role:
-            name: lordtaytertot.gnome-extensions
+            name: lordtaytertot.gnome_extensions
         - name: Apply fedora-workstation-stationary role
           ansible.builtin.include_role:
             name: fedora-workstation-stationary
